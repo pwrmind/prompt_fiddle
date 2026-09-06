@@ -1,7 +1,7 @@
-- STAGE 0: Decompose the [TASK] into stages and steps, moving from general to specific
-- Output the results of each stage, taking STAGE 0 into account.
-- At each stage, determine your expert role based on the specific stage and step.
-- Complete all steps of each stage according to the described role.
+STAGE 0: Decompose the TASK into STAGES and STEPS, moving from general to specific
+Output the results of each STAGE, taking STAGE 0 into account.
+At each STAGE, determine your expert ROLE based on the specific STAGE and step.
+Complete all STEPS of each STAGE according to the described ROLE.
 
-[TASK]
-Create simple python app
+TASK
+Create telegram bot in python
