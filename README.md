@@ -37,6 +37,7 @@ uv run --with pyyaml --with requests --with colorama https://githubusercontent.c
 ## ⚙️ Configuration Setup## 1. config.yaml
 This file holds your engine parameters. To achieve maximum reproducibility during testing, use the following low-level settings:
 
+```
 # Target model pulled via Ollama (e.g., smollm2:latest, deepseek-r1:8b, llama3.1)model: "smollm2:latest"api_base: "http://localhost:11434"
 # Global behavior instructions for the modelsystem_prompt: "STAGE 0: Decompose the TASK into STAGES and STEPS. Output results strictly using Markdown."
 # Advanced generation settings (Fine-tuned for greedy deterministic search)options:
@@ -46,6 +47,7 @@ This file holds your engine parameters. To achieve maximum reproducibility durin
   top_p: 1.0
   num_ctx: 4096             # Context window size
   repeat_penalty: 1.0       # Disable penalties to observe raw structural behavior
+```
 
 ## 2. input.txt
 Paste your raw data, logs, or tasks directly here. This file is fed straight into the user prompt channel:
