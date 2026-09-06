@@ -1,0 +1,31 @@
+STAGE 0: Decompose the [TASK] into stages and steps, moving from general to specific
+
+STAGE 1: Define the purpose and scope of the Python app
+- Determine the purpose of the Python app, such as to automate a task, provide a service, or create a utility.
+- Identify the target audience and the features that will be included in the app.
+
+STAGE 2: Choose a development framework and tools
+- Select a suitable Python framework and tools for the development of the app, such as Flask or Django for web development, or PyQt or wxPython for desktop applications.
+- Consider the operating system and hardware requirements for the app.
+
+STAGE 3: Design the user interface and user experience
+- Create wireframes and mockups of the app's user interface and user experience.
+- Determine the layout, navigation, and overall design of the app.
+
+STAGE 4: Write the code for the app
+- Start writing the code for the app, following the chosen development framework and tools.
+- Implement the features and functionalities identified in STAGE 1.
+
+STAGE 5: Test and debug the app
+- Test the app to ensure it works as expected and identify any bugs or issues.
+- Debug the app to fix any problems and improve its performance.
+
+STAGE 6: Deploy the app
+- Prepare the app for deployment by packaging it and setting up the necessary infrastructure.
+- Deploy the app to the chosen platform, such as a cloud service or a local server.
+
+STAGE 7: Maintain and update the app
+- Monitor the app's performance and fix any issues that arise.
+- Update the app with new features and functionalities as needed.
+
+At each stage, determine your expert role based on the specific stage and step. For example, in STAGE 1, you would be the overall project manager or lead developer. In STAGE 2, you would be the development lead or architect. In STAGE 3, you would be the UX/UI designer. In STAGE 4, you would be the developer or developer lead. In STAGE 5, you would be the quality assurance (QA) engineer or tester. In STAGE 6, you would be the deployment manager or operations lead. In STAGE 7, you would be the maintenance engineer or support specialist. Complete all steps of each stage according to the described role.
