@@ -1,4 +1,5 @@
 # 🎻 Prompt Fiddle
+
 Prompt Fiddle is a lightweight, terminal-based prompt engineering playground designed for local LLMs (powered by Ollama) and OpenAI-compatible APIs. It treats prompts as code, allowing you to fine-tune system instructions and generation parameters with absolute reproducibility, while tracking changes using a beautiful, color-coded terminal diff.
 Inspired by the concept of JSFiddle, Prompt Fiddle provides a clean, isolated environment to experiment, iterate, and scientifically test your prompts directly from your favorite terminal.
 ------------------------------
