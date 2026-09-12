@@ -99,6 +99,11 @@
             color: white;
         }
 
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+        }
+
         .status-indicator {
             display: flex;
             align-items: center;
@@ -357,6 +362,7 @@
             display: flex;
             gap: 10px;
             margin-top: 20px;
+            flex-wrap: wrap;
         }
 
         /* Responsive Design */
@@ -392,6 +398,12 @@
 
         .hidden {
             display: none !important;
+        }
+
+        .size-hint {
+            font-size: 12px;
+            color: #7fb0e8;
+            margin-top: 4px;
         }
     </style>
 </head>
@@ -490,12 +502,23 @@
             <div class="form-group">
                 <label for="modelSelect">Select Model</label>
                 <select id="modelSelect" onchange="onModelChange()">
-                    <option value="LiquidAI/LFM2.5-1.2B-Instruct-ONNX">LFM2.5 1.2B Instruct (ONNX, WebGPU — Recommended)</option>
-                    <option value="Xenova/tinyllama-1.1b-chat-v1.0">TinyLlama 1.1B Chat</option>
-                    <option value="Xenova/LaMini-Flan-T5-77M">LaMini Flan-T5 77M (Lightest)</option>
-                    <option value="Xenova/opt-125m">OPT 125M</option>
-                    <option value="custom">Custom (enter path below)</option>
+                    <option value="LiquidAI/LFM2.5-1.2B-Instruct-ONNX">
+                        LFM2.5 1.2B Instruct — ONNX (~760 МБ на WebGPU)
+                    </option>
+                    <option value="Xenova/tinyllama-1.1b-chat-v1.0">
+                        TinyLlama 1.1B Chat (~700 МБ)
+                    </option>
+                    <option value="Xenova/LaMini-Flan-T5-77M">
+                        LaMini Flan-T5 77M — самая лёгкая (~80 МБ)
+                    </option>
+                    <option value="Xenova/opt-125m">
+                        OPT 125M (~130 МБ)
+                    </option>
+                    <option value="custom">Custom (введите путь ниже)</option>
                 </select>
+                <div class="size-hint" id="modelSizeHint">
+                    ≈ 760 МБ для WebGPU / ≈ 850 МБ для WASM
+                </div>
             </div>
 
             <div class="form-group" id="customModelGroup" style="display: none;">
@@ -542,8 +565,13 @@
             </div>
 
             <div class="settings-actions">
-                <button class="btn btn-primary" onclick="loadModelFromSettings()">Load Selected Model</button>
-                <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+                <button class="btn btn-primary" id="loadModelBtn" onclick="loadModelFromSettings()">
+                    Load Selected Model
+                </button>
+                <button class="btn btn-danger hidden" id="cancelLoadBtn" onclick="cancelModelLoad()">
+                    ✖ Cancel Download
+                </button>
+                <button class="btn btn-secondary" onclick="closeSettings()">Close</button>
             </div>
         </div>
     </div>
@@ -551,17 +579,14 @@
     <script type="module">
         // ---------------------------------------------------------------
         // Import Transformers.js v3 from CDN
-        // NOTE: v3+ is published under @huggingface/transformers
-        //       (the old @xenova/transformers scope only has v2.x)
+        // v3+ is published under @huggingface/transformers
         // ---------------------------------------------------------------
-        let pipeline, env, RawImage, Tensor;
+        let pipeline, env;
 
         try {
             const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
             pipeline = mod.pipeline;
             env = mod.env;
-            RawImage = mod.RawImage;
-            Tensor = mod.Tensor;
         } catch (err) {
             console.error('Failed to load Transformers.js:', err);
             document.getElementById('statusDot').className = 'status-dot error';
@@ -578,6 +603,10 @@
         let isModelLoaded = false;
         let isGenerating = false;
 
+        // Model loading state
+        let isLoadingModel = false;
+        let cancelRequested = false;
+
         // Configuration keys for localStorage
         const CONFIG_KEY = 'promptFiddleConfig';
         const DATA_KEY = 'promptFiddleData';
@@ -592,13 +621,21 @@
             useWebGPU: 'auto'
         };
 
-        // Known non-custom models (used for restoring the select box)
+        // Known non-custom models
         const KNOWN_MODELS = [
             'LiquidAI/LFM2.5-1.2B-Instruct-ONNX',
             'Xenova/tinyllama-1.1b-chat-v1.0',
             'Xenova/LaMini-Flan-T5-77M',
             'Xenova/opt-125m'
         ];
+
+        // Approximate sizes for display
+        const MODEL_SIZES_MB = {
+            'LiquidAI/LFM2.5-1.2B-Instruct-ONNX': { webgpu: 760, wasm: 850 },
+            'Xenova/tinyllama-1.1b-chat-v1.0':     { webgpu: 700, wasm: 700 },
+            'Xenova/LaMini-Flan-T5-77M':           { webgpu: 80,  wasm: 80  },
+            'Xenova/opt-125m':                     { webgpu: 130, wasm: 130 }
+        };
 
         // ---------------------------------------------------------------
         // Storage helpers
@@ -614,7 +651,6 @@
                     document.getElementById('systemPrompt').value = config.systemPrompt || '';
                     document.getElementById('userInput').value = config.userInput || '';
 
-                    // Restore sliders
                     document.getElementById('temperature').value = config.temperature;
                     document.getElementById('maxTokens').value = config.maxTokens;
                     document.getElementById('topP').value = config.topP;
@@ -626,7 +662,6 @@
                     document.getElementById('topPValue').textContent = config.topP;
                     document.getElementById('topKValue').textContent = config.topK;
 
-                    // Restore model select
                     const modelSelect = document.getElementById('modelSelect');
                     if (KNOWN_MODELS.includes(config.modelId)) {
                         modelSelect.value = config.modelId;
@@ -721,7 +756,19 @@
             const modelSelect = document.getElementById('modelSelect');
             const customGroup = document.getElementById('customModelGroup');
             customGroup.style.display = modelSelect.value === 'custom' ? 'block' : 'none';
+            updateSizeHint();
         };
+
+        function updateSizeHint() {
+            const hint = document.getElementById('modelSizeHint');
+            const modelId = getSelectedModelId();
+            const size = MODEL_SIZES_MB[modelId];
+            if (size) {
+                hint.textContent = `≈ ${size.webgpu} МБ для WebGPU / ≈ ${size.wasm} МБ для WASM`;
+            } else {
+                hint.textContent = 'Размер зависит от модели (проверьте репозиторий на Hugging Face)';
+            }
+        }
 
         // ---------------------------------------------------------------
         // Status / notification helpers
@@ -756,7 +803,6 @@
             }, 3000);
         }
 
-        // Inject animations once
         (function injectAnimations() {
             const style = document.createElement('style');
             style.textContent = `
@@ -780,11 +826,18 @@
         };
 
         window.closeSettings = function () {
+            // Не даём закрыть окно во время загрузки модели,
+            // чтобы пользователь случайно не потерял прогресс.
+            if (isLoadingModel) {
+                if (!confirm('Загрузка модели ещё идёт. Закрыть окно настроек? Прогресс продолжится в фоне.')) {
+                    return;
+                }
+            }
             document.getElementById('settingsModal').classList.remove('active');
         };
 
         // ---------------------------------------------------------------
-        // Model loading (with multi-file progress aggregation)
+        // Model loading (with multi-file progress aggregation + cancel)
         // ---------------------------------------------------------------
         function formatMB(bytes) {
             return (bytes / 1024 / 1024).toFixed(1);
@@ -798,7 +851,24 @@
             return `${m}m ${s}s remaining`;
         }
 
+        // Пользователь нажал «Cancel Download»
+        window.cancelModelLoad = function () {
+            if (!isLoadingModel) return;
+            cancelRequested = true;
+
+            const loadText = document.getElementById('modelLoadText');
+            if (loadText) loadText.textContent = 'Отмена загрузки...';
+
+            const cancelBtn = document.getElementById('cancelLoadBtn');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = '⏳ Отмена...';
+            }
+        };
+
         window.loadModelFromSettings = async function () {
+            if (isLoadingModel) return;
+
             const modelId = getSelectedModelId();
 
             if (!modelId) {
@@ -809,12 +879,22 @@
             const progressBar = document.getElementById('modelProgress');
             const progressFill = document.getElementById('modelProgressFill');
             const loadText = document.getElementById('modelLoadText');
+            const loadBtn = document.getElementById('loadModelBtn');
+            const cancelBtn = document.getElementById('cancelLoadBtn');
 
-            // Show progress UI
+            // ----- UI: loading state -----
+            isLoadingModel = true;
+            cancelRequested = false;
+
             progressBar.classList.remove('hidden');
             loadText.classList.remove('hidden');
             progressFill.style.width = '0%';
             loadText.textContent = 'Preparing download...';
+
+            loadBtn.disabled = true;
+            cancelBtn.classList.remove('hidden');
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = '✖ Cancel Download';
 
             updateStatus('loading', 'Loading model...');
 
@@ -833,10 +913,27 @@
                 device = (await isWebGPUAvailable()) ? 'webgpu' : 'wasm';
             }
 
+            // ----- dtype selection (это ключ к скачиванию ~760 МБ вместо 4.7 ГБ) -----
+            const dtype = device === 'webgpu' ? 'q4f16' : 'q4';
+
+            // Класс для отмены — прокидываем через progress_callback
+            class ModelLoadCancelled extends Error {
+                constructor() {
+                    super('CANCELLED_BY_USER');
+                    this.name = 'ModelLoadCancelled';
+                }
+            }
+
             try {
                 generator = await pipeline('text-generation', modelId, {
                     device: device,
+                    dtype: dtype,
                     progress_callback: (progress) => {
+                        // Проверяем отмену на каждом шаге
+                        if (cancelRequested) {
+                            throw new ModelLoadCancelled();
+                        }
+
                         const file = progress.file || 'unknown';
 
                         if (progress.status === 'initiate') {
@@ -901,7 +998,12 @@
                     }
                 });
 
-                // ---- Success ----
+                // ----- Проверяем, не отменил ли пользователь загрузку в самом конце -----
+                if (cancelRequested) {
+                    throw new ModelLoadCancelled();
+                }
+
+                // ----- Success -----
                 isModelLoaded = true;
                 document.getElementById('generateBtn').disabled = false;
 
@@ -909,19 +1011,39 @@
                 loadText.classList.add('hidden');
 
                 const totalSec = ((performance.now() - startTime) / 1000).toFixed(1);
-                updateStatus('ready', `Model: ${modelId.split('/').pop()} (${device})`);
-                showNotification(`Model loaded in ${totalSec}s on ${device}`, 'success');
+                updateStatus('ready', `Model: ${modelId.split('/').pop()} (${device}, ${dtype})`);
+                showNotification(`Model loaded in ${totalSec}s on ${device} [${dtype}]`, 'success');
 
-                closeSettings();
                 saveToStorage();
 
             } catch (error) {
-                console.error('Error loading model:', error);
-                progressBar.classList.add('hidden');
-                loadText.classList.add('hidden');
+                if (error && (error.name === 'ModelLoadCancelled' || error.message === 'CANCELLED_BY_USER')) {
+                    // ----- Отменено пользователем -----
+                    generator = null;
+                    isModelLoaded = false;
 
-                updateStatus('error', 'Failed to load model');
-                showNotification('Error loading model: ' + error.message, 'error');
+                    progressBar.classList.add('hidden');
+                    loadText.classList.add('hidden');
+
+                    updateStatus('ready', 'Загрузка модели отменена');
+                    showNotification('Загрузка модели отменена', 'success');
+                } else {
+                    // ----- Настоящая ошибка -----
+                    console.error('Error loading model:', error);
+                    progressBar.classList.add('hidden');
+                    loadText.classList.add('hidden');
+
+                    updateStatus('error', 'Failed to load model');
+                    showNotification('Error loading model: ' + error.message, 'error');
+                }
+            } finally {
+                isLoadingModel = false;
+                cancelRequested = false;
+
+                loadBtn.disabled = false;
+                cancelBtn.classList.add('hidden');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = '✖ Cancel Download';
             }
         };
 
@@ -968,10 +1090,6 @@
         // ---------------------------------------------------------------
         // Prompt formatting for LFM2.5-1.2B-Instruct
         // ---------------------------------------------------------------
-        // Chat template used by LiquidAI LFM2.5:
-        //   <|im_start|>system\n{system}<|im_end|>\n
-        //   <|im_start|>user\n{user}<|im_end|>\n
-        //   <|im_start|>assistant\n
         function buildChatPrompt(systemPrompt, userInput) {
             let prompt = '';
             if (systemPrompt) {
@@ -1175,6 +1293,7 @@
         async function init() {
             await checkWebGPUSupport();
             loadFromStorage();
+            updateSizeHint();
         }
 
         init();
