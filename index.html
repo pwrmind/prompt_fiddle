@@ -63,12 +63,17 @@
             gap: 8px;
         }
 
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-primary {
             background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
             color: white;
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(74, 144, 217, 0.4);
         }
@@ -78,7 +83,7 @@
             color: white;
         }
 
-        .btn-secondary:hover {
+        .btn-secondary:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
         }
@@ -324,42 +329,6 @@
             border-color: #4a90d9;
         }
 
-        .model-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 5px;
-            padding: 10px;
-        }
-
-        .model-item {
-            padding: 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .model-item:hover {
-            background: rgba(74, 144, 217, 0.2);
-        }
-
-        .model-item.selected {
-            background: rgba(74, 144, 217, 0.4);
-            border: 1px solid #4a90d9;
-        }
-
-        .model-item-name {
-            font-weight: 500;
-        }
-
-        .model-item-size {
-            font-size: 12px;
-            color: #a0a0a0;
-        }
-
         .progress-bar {
             width: 100%;
             height: 8px;
@@ -520,7 +489,8 @@
             <div class="form-group">
                 <label for="modelSelect">Select Model</label>
                 <select id="modelSelect" onchange="onModelChange()">
-                    <option value="Xenova/tinyllama-1.1b-chat-v1.0">TinyLlama 1.1B Chat (Recommended for testing)</option>
+                    <option value="LiquidAI/LFM2.5-1.2B-Instruct-ONNX">LFM2.5 1.2B Instruct (ONNX, WebGPU — Recommended)</option>
+                    <option value="Xenova/tinyllama-1.1b-chat-v1.0">TinyLlama 1.1B Chat</option>
                     <option value="Xenova/LaMini-Flan-T5-77M">LaMini Flan-T5 77M (Lightest)</option>
                     <option value="Xenova/opt-125m">OPT 125M</option>
                     <option value="custom">Custom (enter path below)</option>
@@ -528,16 +498,16 @@
             </div>
 
             <div class="form-group" id="customModelGroup" style="display: none;">
-                <label for="customModelPath">Custom Model Path (Hugging Face)</label>
-                <input type="text" id="customModelPath" placeholder="e.g., username/model-name">
+                <label for="customModelPath">Custom Model Path (Hugging Face, ONNX-compatible)</label>
+                <input type="text" id="customModelPath" placeholder="e.g., LiquidAI/LFM2.5-1.2B-Instruct-ONNX">
             </div>
 
             <div class="form-group">
                 <label>Generation Parameters</label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div>
-                        <label for="temperature" style="font-size: 12px;">Temperature: <span id="tempValue">0.7</span></label>
-                        <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('tempValue').textContent = this.value">
+                        <label for="temperature" style="font-size: 12px;">Temperature: <span id="tempValue">0.2</span></label>
+                        <input type="range" id="temperature" min="0" max="2" step="0.05" value="0.2" oninput="document.getElementById('tempValue').textContent = this.value">
                     </div>
                     <div>
                         <label for="maxTokens" style="font-size: 12px;">Max Tokens: <span id="maxTokensValue">512</span></label>
@@ -548,18 +518,18 @@
                         <input type="range" id="topP" min="0" max="1" step="0.05" value="0.9" oninput="document.getElementById('topPValue').textContent = this.value">
                     </div>
                     <div>
-                        <label for="topK" style="font-size: 12px;">Top K: <span id="topKValue">40</span></label>
-                        <input type="range" id="topK" min="1" max="100" step="1" value="40" oninput="document.getElementById('topKValue').textContent = this.value">
+                        <label for="topK" style="font-size: 12px;">Top K: <span id="topKValue">50</span></label>
+                        <input type="range" id="topK" min="1" max="100" step="1" value="50" oninput="document.getElementById('topKValue').textContent = this.value">
                     </div>
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Use WebGPU Acceleration</label>
+                <label>Device / Acceleration</label>
                 <select id="useWebGPU">
-                    <option value="auto">Auto (Recommended)</option>
+                    <option value="auto">Auto (try WebGPU, fallback to WASM)</option>
                     <option value="true">Force WebGPU</option>
-                    <option value="false">Use CPU/WASM</option>
+                    <option value="false">Use CPU / WASM only</option>
                 </select>
             </div>
 
@@ -581,54 +551,66 @@
         // Import Transformers.js from CDN
         import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@3.0.0';
 
+        // ---------------------------------------------------------------
         // Global state
+        // ---------------------------------------------------------------
         let generator = null;
         let previousResponse = null;
         let currentResponse = null;
         let isModelLoaded = false;
         let isGenerating = false;
 
-        // Configuration
+        // Configuration keys for localStorage
         const CONFIG_KEY = 'promptFiddleConfig';
         const DATA_KEY = 'promptFiddleData';
 
         // Default configuration
         const defaultConfig = {
-            modelId: 'Xenova/tinyllama-1.1b-chat-v1.0',
-            temperature: 0.7,
+            modelId: 'LiquidAI/LFM2.5-1.2B-Instruct-ONNX',
+            temperature: 0.2,
             maxTokens: 512,
             topP: 0.9,
-            topK: 40,
+            topK: 50,
             useWebGPU: 'auto'
         };
 
-        // Load saved data from localStorage
+        // Known non-custom models (used for restoring the select box)
+        const KNOWN_MODELS = [
+            'LiquidAI/LFM2.5-1.2B-Instruct-ONNX',
+            'Xenova/tinyllama-1.1b-chat-v1.0',
+            'Xenova/LaMini-Flan-T5-77M',
+            'Xenova/opt-125m'
+        ];
+
+        // ---------------------------------------------------------------
+        // Storage helpers
+        // ---------------------------------------------------------------
         function loadFromStorage() {
             try {
                 const savedConfig = localStorage.getItem(CONFIG_KEY);
                 const savedData = localStorage.getItem(DATA_KEY);
 
                 if (savedConfig) {
-                    const config = JSON.parse(savedConfig);
+                    const config = { ...defaultConfig, ...JSON.parse(savedConfig) };
+
                     document.getElementById('systemPrompt').value = config.systemPrompt || '';
                     document.getElementById('userInput').value = config.userInput || '';
-                    
-                    // Restore settings
-                    document.getElementById('temperature').value = config.temperature || 0.7;
-                    document.getElementById('maxTokens').value = config.maxTokens || 512;
-                    document.getElementById('topP').value = config.topP || 0.9;
-                    document.getElementById('topK').value = config.topK || 40;
-                    document.getElementById('useWebGPU').value = config.useWebGPU || 'auto';
-                    
-                    document.getElementById('tempValue').textContent = config.temperature || 0.7;
-                    document.getElementById('maxTokensValue').textContent = config.maxTokens || 512;
-                    document.getElementById('topPValue').textContent = config.topP || 0.9;
-                    document.getElementById('topKValue').textContent = config.topK || 40;
 
-                    // Set model selection
+                    // Restore sliders
+                    document.getElementById('temperature').value = config.temperature;
+                    document.getElementById('maxTokens').value = config.maxTokens;
+                    document.getElementById('topP').value = config.topP;
+                    document.getElementById('topK').value = config.topK;
+                    document.getElementById('useWebGPU').value = config.useWebGPU;
+
+                    document.getElementById('tempValue').textContent = config.temperature;
+                    document.getElementById('maxTokensValue').textContent = config.maxTokens;
+                    document.getElementById('topPValue').textContent = config.topP;
+                    document.getElementById('topKValue').textContent = config.topK;
+
+                    // Restore model select
                     const modelSelect = document.getElementById('modelSelect');
-                    const customModels = ['Xenova/tinyllama-1.1b-chat-v1.0', 'Xenova/LaMini-Flan-T5-77M', 'Xenova/opt-125m'];
-                    if (customModels.includes(config.modelId)) {
+                    if (KNOWN_MODELS.includes(config.modelId)) {
                         modelSelect.value = config.modelId;
                         document.getElementById('customModelGroup').style.display = 'none';
                     } else {
@@ -642,7 +624,7 @@
                     const data = JSON.parse(savedData);
                     previousResponse = data.previousResponse || null;
                     currentResponse = data.currentResponse || null;
-                    
+
                     if (previousResponse) {
                         document.getElementById('previousResponse').textContent = previousResponse;
                     }
@@ -652,15 +634,14 @@
                     }
                 }
 
-                updateStatus('ready', 'Ready - Select a model to begin');
+                updateStatus('ready', 'Ready — load a model to begin');
             } catch (error) {
                 console.error('Error loading from storage:', error);
                 updateStatus('error', 'Error loading saved data');
             }
         }
 
-        // Save data to localStorage
-        window.saveToStorage = function() {
+        window.saveToStorage = function () {
             try {
                 const config = {
                     systemPrompt: document.getElementById('systemPrompt').value,
@@ -688,26 +669,28 @@
             }
         };
 
-        // Clear all data
-        window.clearAll = function() {
+        window.clearAll = function () {
             if (confirm('Are you sure you want to clear all saved data?')) {
                 localStorage.removeItem(CONFIG_KEY);
                 localStorage.removeItem(DATA_KEY);
-                
+
                 document.getElementById('systemPrompt').value = '';
                 document.getElementById('userInput').value = '';
-                document.getElementById('resultContent').innerHTML = '<em style="color: #666;">Response will appear here after generation...</em>';
+                document.getElementById('resultContent').innerHTML =
+                    '<em style="color: #666;">Response will appear here after generation...</em>';
                 document.getElementById('previousResponse').textContent = 'No previous response available.';
                 document.getElementById('currentResponse').textContent = 'Generate a response to see comparison.';
-                
+
                 previousResponse = null;
                 currentResponse = null;
-                
+
                 showNotification('All data cleared!', 'success');
             }
         };
 
-        // Get selected model ID
+        // ---------------------------------------------------------------
+        // Model selection helpers
+        // ---------------------------------------------------------------
         function getSelectedModelId() {
             const modelSelect = document.getElementById('modelSelect');
             if (modelSelect.value === 'custom') {
@@ -716,16 +699,22 @@
             return modelSelect.value;
         }
 
-        // Update status indicator
+        window.onModelChange = function () {
+            const modelSelect = document.getElementById('modelSelect');
+            const customGroup = document.getElementById('customModelGroup');
+            customGroup.style.display = modelSelect.value === 'custom' ? 'block' : 'none';
+        };
+
+        // ---------------------------------------------------------------
+        // Status / notification helpers
+        // ---------------------------------------------------------------
         function updateStatus(status, text) {
             const dot = document.getElementById('statusDot');
             const statusText = document.getElementById('statusText');
-            
             dot.className = 'status-dot ' + status;
             statusText.textContent = text;
         }
 
-        // Show notification
         function showNotification(message, type) {
             const notification = document.createElement('div');
             notification.style.cssText = `
@@ -738,121 +727,253 @@
                 border-radius: 5px;
                 z-index: 2000;
                 animation: slideIn 0.3s ease;
+                max-width: 400px;
             `;
             notification.textContent = message;
             document.body.appendChild(notification);
-            
+
             setTimeout(() => {
                 notification.style.animation = 'slideOut 0.3s ease';
                 setTimeout(() => notification.remove(), 300);
             }, 3000);
         }
 
-        // Add animations
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(400px); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(400px); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
+        // Inject animations once
+        (function injectAnimations() {
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideIn {
+                    from { transform: translateX(400px); opacity: 0; }
+                    to   { transform: translateX(0);    opacity: 1; }
+                }
+                @keyframes slideOut {
+                    from { transform: translateX(0);    opacity: 1; }
+                    to   { transform: translateX(400px); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        })();
 
-        // Open settings modal
-        window.openSettings = function() {
+        // ---------------------------------------------------------------
+        // Settings modal
+        // ---------------------------------------------------------------
+        window.openSettings = function () {
             document.getElementById('settingsModal').classList.add('active');
         };
 
-        // Close settings modal
-        window.closeSettings = function() {
+        window.closeSettings = function () {
             document.getElementById('settingsModal').classList.remove('active');
         };
 
-        // Handle model selection change
-        window.onModelChange = function() {
-            const modelSelect = document.getElementById('modelSelect');
-            const customGroup = document.getElementById('customModelGroup');
-            
-            if (modelSelect.value === 'custom') {
-                customGroup.style.display = 'block';
-            } else {
-                customGroup.style.display = 'none';
-            }
-        };
+        // ---------------------------------------------------------------
+        // Model loading (with multi-file progress aggregation)
+        // ---------------------------------------------------------------
+        function formatMB(bytes) {
+            return (bytes / 1024 / 1024).toFixed(1);
+        }
 
-        // Load model from settings
-        window.loadModelFromSettings = async function() {
+        function formatETA(seconds) {
+            if (!isFinite(seconds) || seconds <= 0) return '';
+            if (seconds < 60) return `${Math.round(seconds)}s remaining`;
+            const m = Math.floor(seconds / 60);
+            const s = Math.round(seconds % 60);
+            return `${m}m ${s}s remaining`;
+        }
+
+        window.loadModelFromSettings = async function () {
             const modelId = getSelectedModelId();
-            
+
             if (!modelId) {
                 showNotification('Please enter a model path', 'error');
                 return;
             }
 
+            const progressBar = document.getElementById('modelProgress');
+            const progressFill = document.getElementById('modelProgressFill');
+            const loadText = document.getElementById('modelLoadText');
+
+            // Show progress UI
+            progressBar.classList.remove('hidden');
+            loadText.classList.remove('hidden');
+            progressFill.style.width = '0%';
+            loadText.textContent = 'Preparing download...';
+
+            updateStatus('loading', 'Loading model...');
+
+            // Per-file progress tracker
+            // fileProgress = { [filename]: { loaded, total, done } }
+            const fileProgress = {};
+            const startTime = performance.now();
+
+            // Decide device
+            const useWebGPUSetting = document.getElementById('useWebGPU').value;
+            let device;
+            if (useWebGPUSetting === 'false') {
+                device = 'wasm';
+            } else if (useWebGPUSetting === 'true') {
+                device = 'webgpu';
+            } else {
+                // auto: check WebGPU availability
+                device = (await isWebGPUAvailable()) ? 'webgpu' : 'wasm';
+            }
+
             try {
-                // Show progress
-                document.getElementById('modelProgress').classList.remove('hidden');
-                document.getElementById('modelLoadText').classList.remove('hidden');
-                document.getElementById('modelProgressFill').style.width = '0%';
-
-                updateStatus('loading', 'Loading model...');
-
-                // Configure WebGPU
-                const useWebGPU = document.getElementById('useWebGPU').value;
-                if (useWebGPU === 'true') {
-                    env.backends.onnx.wasm.proxy = false;
-                    env.allowLocalModels = false;
-                } else if (useWebGPU === 'false') {
-                    env.backends.onnx.wasm.proxy = true;
-                }
-
-                // Load the model with progress callback
                 generator = await pipeline('text-generation', modelId, {
+                    device: device,
                     progress_callback: (progress) => {
-                        if (progress.status === 'progress') {
-                            const percent = Math.round((progress.loaded / progress.total) * 100);
-                            document.getElementById('modelProgressFill').style.width = percent + '%';
-                            document.getElementById('modelLoadText').textContent = 
-                                `Loading model... ${percent}%`;
+                        const file = progress.file || 'unknown';
+
+                        // --- Statuses emitted by transformers.js ---
+                        if (progress.status === 'initiate') {
+                            fileProgress[file] = { loaded: 0, total: 0, done: false };
+                            loadText.textContent = `Fetching ${file.split('/').pop()}...`;
+                            return;
                         }
-                    },
-                    dtype: 'q4f16', // Quantized for better performance
-                    device: useWebGPU === 'true' ? 'webgpu' : (useWebGPU === 'false' ? 'wasm' : null)
+
+                        if (progress.status === 'download' || progress.status === 'progress') {
+                            if (!fileProgress[file]) {
+                                fileProgress[file] = { loaded: 0, total: 0, done: false };
+                            }
+                            if (typeof progress.loaded === 'number') {
+                                fileProgress[file].loaded = progress.loaded;
+                            }
+                            if (typeof progress.total === 'number' && progress.total > 0) {
+                                fileProgress[file].total = progress.total;
+                            }
+
+                            // Aggregate across all files
+                            let totalLoaded = 0;
+                            let totalSize = 0;
+                            for (const f of Object.values(fileProgress)) {
+                                totalLoaded += f.loaded || 0;
+                                totalSize += f.total || 0;
+                            }
+
+                            if (totalSize > 0) {
+                                const percent = Math.min(
+                                    100,
+                                    Math.round((totalLoaded / totalSize) * 100)
+                                );
+                                progressFill.style.width = percent + '%';
+
+                                // Compute speed + ETA
+                                const elapsedSec = (performance.now() - startTime) / 1000;
+                                const speed = elapsedSec > 0 ? totalLoaded / elapsedSec : 0;
+                                const remainingBytes = Math.max(0, totalSize - totalLoaded);
+                                const etaSec = speed > 0 ? remainingBytes / speed : Infinity;
+
+                                loadText.textContent =
+                                    `${formatMB(totalLoaded)} / ${formatMB(totalSize)} MB ` +
+                                    `(${percent}%) — ${formatMB(speed)}/s — ${formatETA(etaSec)}`;
+                            }
+                            return;
+                        }
+
+                        if (progress.status === 'done') {
+                            if (fileProgress[file]) {
+                                fileProgress[file].done = true;
+                                if (!fileProgress[file].total) {
+                                    fileProgress[file].loaded = 1;
+                                    fileProgress[file].total = 1;
+                                }
+                            }
+                            loadText.textContent = `Ready: ${file.split('/').pop()}`;
+                            return;
+                        }
+
+                        if (progress.status === 'ready') {
+                            progressFill.style.width = '100%';
+                            loadText.textContent = 'Model ready!';
+                        }
+                    }
                 });
 
+                // ---- Success ----
                 isModelLoaded = true;
                 document.getElementById('generateBtn').disabled = false;
-                
-                document.getElementById('modelProgress').classList.add('hidden');
-                document.getElementById('modelLoadText').classList.add('hidden');
-                
-                updateStatus('ready', `Model loaded: ${modelId.split('/').pop()}`);
-                showNotification('Model loaded successfully!', 'success');
-                
+
+                progressBar.classList.add('hidden');
+                loadText.classList.add('hidden');
+
+                const totalSec = ((performance.now() - startTime) / 1000).toFixed(1);
+                updateStatus('ready', `Model: ${modelId.split('/').pop()} (${device})`);
+                showNotification(`Model loaded in ${totalSec}s on ${device}`, 'success');
+
                 closeSettings();
-                
-                // Save config
                 saveToStorage();
-                
+
             } catch (error) {
                 console.error('Error loading model:', error);
-                document.getElementById('modelProgress').classList.add('hidden');
-                document.getElementById('modelLoadText').classList.add('hidden');
-                
+                progressBar.classList.add('hidden');
+                loadText.classList.add('hidden');
+
                 updateStatus('error', 'Failed to load model');
                 showNotification('Error loading model: ' + error.message, 'error');
             }
         };
 
-        // Generate response
-        window.generateResponse = async function() {
-            if (!isModelLoaded || isGenerating) {
-                return;
+        // ---------------------------------------------------------------
+        // WebGPU detection
+        // ---------------------------------------------------------------
+        async function isWebGPUAvailable() {
+            if (!('gpu' in navigator)) return false;
+            try {
+                const adapter = await navigator.gpu.requestAdapter();
+                return !!adapter;
+            } catch (e) {
+                return false;
             }
+        }
+
+        async function checkWebGPUSupport() {
+            const info = document.getElementById('webgpuInfo');
+
+            if (!('gpu' in navigator)) {
+                info.innerHTML =
+                    '⚠️ WebGPU не поддерживается. Используется WASM (значительно медленнее). ' +
+                    'Рекомендуется Chrome 113+, Edge 113+ или последний Safari.';
+                info.style.background = 'rgba(255, 193, 7, 0.2)';
+                info.style.borderColor = '#ffc107';
+                info.style.display = 'block';
+                return false;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            if (!adapter) {
+                info.innerHTML =
+                    '⚠️ WebGPU-адаптер не найден. Используется WASM (значительно медленнее).';
+                info.style.background = 'rgba(255, 193, 7, 0.2)';
+                info.style.borderColor = '#ffc107';
+                info.style.display = 'block';
+                return false;
+            }
+
+            info.style.display = 'none';
+            return true;
+        }
+
+        // ---------------------------------------------------------------
+        // Prompt formatting for LFM2.5-1.2B-Instruct
+        // ---------------------------------------------------------------
+        // Chat template used by LiquidAI LFM2.5:
+        //   <|im_start|>system\n{system}<|im_end|>\n
+        //   <|im_start|>user\n{user}<|im_end|>\n
+        //   <|im_start|>assistant\n
+        function buildChatPrompt(systemPrompt, userInput) {
+            let prompt = '';
+            if (systemPrompt) {
+                prompt += `<|im_start|>system\n${systemPrompt}<|im_end|>\n`;
+            }
+            prompt += `<|im_start|>user\n${userInput}<|im_end|>\n`;
+            prompt += `<|im_start|>assistant\n`;
+            return prompt;
+        }
+
+        // ---------------------------------------------------------------
+        // Response generation
+        // ---------------------------------------------------------------
+        window.generateResponse = async function () {
+            if (!isModelLoaded || isGenerating) return;
 
             const systemPrompt = document.getElementById('systemPrompt').value.trim();
             const userInput = document.getElementById('userInput').value.trim();
@@ -866,40 +987,47 @@
             document.getElementById('generateBtn').disabled = true;
             document.getElementById('progressBar').classList.remove('hidden');
             document.getElementById('loadingText').classList.remove('hidden');
-            document.getElementById('resultContent').innerHTML = '<em style="color: #666;">Generating...</em>';
+            document.getElementById('loadingText').textContent = 'Generating response...';
+            document.getElementById('resultContent').innerHTML =
+                '<em style="color: #666;">Generating...</em>';
 
             const startTime = performance.now();
 
             try {
-                // Format the prompt for chat models
-                let formattedPrompt = '';
-                if (systemPrompt) {
-                    formattedPrompt = `<|system|>\n${systemPrompt}</s>\n`;
-                }
-                formattedPrompt += `<|user|>\n${userInput}</s>\n<|assistant|>`;
+                const formattedPrompt = buildChatPrompt(systemPrompt, userInput);
 
-                // Get generation parameters
                 const temperature = parseFloat(document.getElementById('temperature').value);
                 const maxTokens = parseInt(document.getElementById('maxTokens').value);
                 const topP = parseFloat(document.getElementById('topP').value);
                 const topK = parseInt(document.getElementById('topK').value);
 
-                // Generate response
                 const output = await generator(formattedPrompt, {
                     max_new_tokens: maxTokens,
                     temperature: temperature,
                     top_p: topP,
                     top_k: topK,
                     do_sample: temperature > 0,
+                    repetition_penalty: 1.05,
                 });
 
                 const endTime = performance.now();
                 const generationTime = ((endTime - startTime) / 1000).toFixed(2);
 
-                // Extract the generated text
+                // Extract generated text
                 let generatedText = output[0].generated_text;
-                // Remove the prompt from the output
-                generatedText = generatedText.replace(formattedPrompt, '').trim();
+
+                // Strip the prompt from the beginning of the output
+                if (generatedText.startsWith(formattedPrompt)) {
+                    generatedText = generatedText.slice(formattedPrompt.length);
+                } else {
+                    generatedText = generatedText.replace(formattedPrompt, '');
+                }
+
+                // Strip any trailing special tokens the model may emit
+                generatedText = generatedText
+                    .replace(/<\|im_end\|>/g, '')
+                    .replace(/<\|im_start\|>/g, '')
+                    .trim();
 
                 // Store responses
                 previousResponse = currentResponse;
@@ -908,13 +1036,12 @@
                 // Update UI
                 document.getElementById('resultContent').textContent = generatedText;
                 document.getElementById('generationTime').textContent = `Generated in ${generationTime}s`;
-                
+
                 if (previousResponse) {
                     document.getElementById('previousResponse').textContent = previousResponse;
                 }
                 document.getElementById('currentResponse').textContent = currentResponse;
 
-                // Save to storage
                 saveToStorage();
 
                 updateStatus('ready', 'Ready');
@@ -922,7 +1049,7 @@
 
             } catch (error) {
                 console.error('Error generating response:', error);
-                document.getElementById('resultContent').innerHTML = 
+                document.getElementById('resultContent').innerHTML =
                     `<em style="color: #dc3545;">Error: ${error.message}</em>`;
                 updateStatus('error', 'Generation failed');
                 showNotification('Error generating response: ' + error.message, 'error');
@@ -934,17 +1061,16 @@
             }
         };
 
-        // Simple diff algorithm
+        // ---------------------------------------------------------------
+        // Diff view
+        // ---------------------------------------------------------------
         function computeDiff(oldText, newText) {
-            if (!oldText) {
-                return newText;
-            }
+            if (!oldText) return newText;
 
             const oldWords = oldText.split(/\s+/);
             const newWords = newText.split(/\s+/);
             const result = [];
 
-            // Simple word-level diff
             const added = newWords.filter(word => !oldWords.includes(word));
             const removed = oldWords.filter(word => !newWords.includes(word));
 
@@ -979,15 +1105,14 @@
             return result.join('');
         }
 
-        // Show diff view
-        window.showDiff = function() {
+        window.showDiff = function () {
             if (!previousResponse || !currentResponse) {
                 showNotification('Need both previous and current responses to show diff', 'error');
                 return;
             }
 
             const diffHtml = computeDiff(previousResponse, currentResponse);
-            
+
             const diffWindow = window.open('', 'Diff View', 'width=800,height=600');
             diffWindow.document.write(`
                 <!DOCTYPE html>
@@ -1036,37 +1161,14 @@
             `);
         };
 
-        // Check WebGPU support
-        function checkWebGPUSupport() {
-            if ('gpu' in navigator) {
-                document.getElementById('webgpuInfo').style.display = 'none';
-                return true;
-            } else {
-                document.getElementById('webgpuInfo').innerHTML = 
-                    '⚠️ WebGPU is not supported in your browser. Consider using Chrome 113+ or Edge for optimal performance. Falling back to WASM.';
-                document.getElementById('webgpuInfo').style.background = 'rgba(255, 193, 7, 0.2)';
-                document.getElementById('webgpuInfo').style.borderColor = '#ffc107';
-                return false;
-            }
-        }
-
-        // Initialize application
-        function init() {
-            checkWebGPUSupport();
+        // ---------------------------------------------------------------
+        // Init
+        // ---------------------------------------------------------------
+        async function init() {
+            await checkWebGPUSupport();
             loadFromStorage();
-            
-            // Auto-load model if previously selected
-            const savedConfig = localStorage.getItem(CONFIG_KEY);
-            if (savedConfig) {
-                const config = JSON.parse(savedConfig);
-                if (config.modelId) {
-                    // Optionally auto-load the model
-                    // loadModelFromSettings();
-                }
-            }
         }
 
-        // Start the application
         init();
     </script>
 </body>
