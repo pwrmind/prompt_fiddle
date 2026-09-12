@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
     <title>Prompt Fiddle - Browser Edition</title>
     <style>
         * {
@@ -548,8 +549,25 @@
     </div>
 
     <script type="module">
-        // Import Transformers.js from CDN
-        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@3.0.0';
+        // ---------------------------------------------------------------
+        // Import Transformers.js v3 from CDN
+        // NOTE: v3+ is published under @huggingface/transformers
+        //       (the old @xenova/transformers scope only has v2.x)
+        // ---------------------------------------------------------------
+        let pipeline, env, RawImage, Tensor;
+
+        try {
+            const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
+            pipeline = mod.pipeline;
+            env = mod.env;
+            RawImage = mod.RawImage;
+            Tensor = mod.Tensor;
+        } catch (err) {
+            console.error('Failed to load Transformers.js:', err);
+            document.getElementById('statusDot').className = 'status-dot error';
+            document.getElementById('statusText').textContent = 'Failed to load Transformers.js library';
+            throw err;
+        }
 
         // ---------------------------------------------------------------
         // Global state
@@ -801,7 +819,6 @@
             updateStatus('loading', 'Loading model...');
 
             // Per-file progress tracker
-            // fileProgress = { [filename]: { loaded, total, done } }
             const fileProgress = {};
             const startTime = performance.now();
 
@@ -813,7 +830,6 @@
             } else if (useWebGPUSetting === 'true') {
                 device = 'webgpu';
             } else {
-                // auto: check WebGPU availability
                 device = (await isWebGPUAvailable()) ? 'webgpu' : 'wasm';
             }
 
@@ -823,7 +839,6 @@
                     progress_callback: (progress) => {
                         const file = progress.file || 'unknown';
 
-                        // --- Statuses emitted by transformers.js ---
                         if (progress.status === 'initiate') {
                             fileProgress[file] = { loaded: 0, total: 0, done: false };
                             loadText.textContent = `Fetching ${file.split('/').pop()}...`;
@@ -841,7 +856,6 @@
                                 fileProgress[file].total = progress.total;
                             }
 
-                            // Aggregate across all files
                             let totalLoaded = 0;
                             let totalSize = 0;
                             for (const f of Object.values(fileProgress)) {
@@ -856,7 +870,6 @@
                                 );
                                 progressFill.style.width = percent + '%';
 
-                                // Compute speed + ETA
                                 const elapsedSec = (performance.now() - startTime) / 1000;
                                 const speed = elapsedSec > 0 ? totalLoaded / elapsedSec : 0;
                                 const remainingBytes = Math.max(0, totalSize - totalLoaded);
@@ -1013,27 +1026,22 @@
                 const endTime = performance.now();
                 const generationTime = ((endTime - startTime) / 1000).toFixed(2);
 
-                // Extract generated text
                 let generatedText = output[0].generated_text;
 
-                // Strip the prompt from the beginning of the output
                 if (generatedText.startsWith(formattedPrompt)) {
                     generatedText = generatedText.slice(formattedPrompt.length);
                 } else {
                     generatedText = generatedText.replace(formattedPrompt, '');
                 }
 
-                // Strip any trailing special tokens the model may emit
                 generatedText = generatedText
                     .replace(/<\|im_end\|>/g, '')
                     .replace(/<\|im_start\|>/g, '')
                     .trim();
 
-                // Store responses
                 previousResponse = currentResponse;
                 currentResponse = generatedText;
 
-                // Update UI
                 document.getElementById('resultContent').textContent = generatedText;
                 document.getElementById('generationTime').textContent = `Generated in ${generationTime}s`;
 
