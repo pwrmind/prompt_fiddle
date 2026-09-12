@@ -1,10 +1,1 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
+Nothing needs to be ignored based on the provided file changes. The only added file is `index.html`, which is a source file and should not be ignored.
