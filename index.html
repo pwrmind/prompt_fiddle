@@ -584,7 +584,7 @@
         let pipeline, env;
 
         try {
-            const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
+            const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.0-next.8');
             pipeline = mod.pipeline;
             env = mod.env;
         } catch (err) {
